@@ -2,16 +2,60 @@
 
 # Pre compiles gcc for NodeOS
 
+source adjustEnvVars.sh || exit $?
+
+
 SOURCES=`pwd`/deps
 TOOLS=`pwd`/tools
+OBJECTS=`pwd`/obj/
+OBJ_DIR=$OBJECTS/gcc
+DEPS=`pwd`/deps
 
 GCC_VERSION=4.7.3
-echo Compiling GCC
+echo Downloading GCC
+if [[ ! -d $SRC_DIR ]]; then
+mkdir -p $SRC_DIR &&
+curl -L $GCC_URL | tar xzf - -C $SRC_DIR --strip-components=1 &&
+(
+cd $SRC_DIR
+# Patch GCC to work with musl
+curl -L http://patches.clfs.org/embedded-dev/gcc-4.7.3-musl-1.patch | patch --silent -Np1 || exit 20
+# Download source code of mpfr, gmp & mpc
+# contrib/download_prerequisites
+mkdir -p mpfr && curl -L http://ftpmirror.gnu.org/mpfr/mpfr-3.1.2.tar.xz | tar xJf - -C mpfr --strip-components=1 &&
+mkdir -p gmp && curl -L http://ftpmirror.gnu.org/gmp/gmp-6.0.0a.tar.xz | tar xJf - -C gmp --strip-components=1 &&
+mkdir -p mpc && curl -L http://ftpmirror.gnu.org/mpc/mpc-1.0.2.tar.gz | tar xzf - -C mpc --strip-components=1 || exit 21
+) || exit $?
+fi
+SRC_DIR=$DEPS/gcc
+echo ----
+echo $SOURCES
+echo $SRC_DIR
 
-GCC_URL=http://ftpmirror.gnu.org/gcc/gcc-4.7.3/gcc-4.7.3.tar.gz
-echo $GCC_URL
-SRC_DIR=$SOURCES/gcc
+cd $SRC_DIR
 
-mkdir -p $SRC_DIR
-curl -L $GCC_URL | tar xzf - -C $SRC_DIR --strip-components=1
+echo Compile GCC
 
+$SRC_DIR/configure \
+--silent \
+--prefix=$TOOLS \
+--build=$HOST \
+--host=$HOST \
+--target=$TARGET \
+--with-sysroot=$TOOLS/$TARGET \
+--disable-nls \
+--disable-shared \
+--without-headers \
+--with-newlib \
+--disable-decimal-float \
+--disable-libgomp \
+--disable-libmudflap \
+--disable-libssp \
+--disable-libatomic \
+--disable-libquadmath \
+--disable-threads \
+--disable-multilib \
+--with-mpfr-include=$SRC_DIR/mpfr/src \
+--with-mpfr-lib=`pwd`/mpfr/src/.libs \
+--with-arch=$CPU \
+--enable-languages=c || exit 31
